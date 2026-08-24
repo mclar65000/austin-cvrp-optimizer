@@ -22,8 +22,19 @@ total_demand = sum(demands)
 # Dynamic minimal fleet size to avoid bloated search space
 num_vehicles = math.ceil(total_demand / vehicle_capacity) + 1
 
+# --- PRINT ALL LOCATION DEMANDS AT THE BEGINNING ---
+print("\n================ LOCATION DEMANDS ================")
+for node_idx, location_name in enumerate(df["name"]):
+    if node_idx == 0:
+        print(f"Node {node_idx:2d}: {location_name:<30} | Depot (0 packages)")
+    else:
+        print(f"Node {node_idx:2d}: {location_name:<30} | {demands[node_idx]} packages")
+print("==================================================\n")
+
 print(f"   Nodes: {num_nodes} (1 Depot + {num_nodes-1} Customers)")
-print(f"   Total Demand: {total_demand} units | Fleet Provisioned: {num_vehicles} vans\n")
+print(f"   Total Fleet Demand: {total_demand} packages")
+print(f"   Vehicle Capacity: {vehicle_capacity} units per van")
+print(f"   Fleet Provisioned: {num_vehicles} vans\n")
 
 # --- PuLP Optimization Model ---
 model = pulp.LpProblem("Austin_CVRP_Optimizer", pulp.LpMinimize)
