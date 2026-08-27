@@ -12,6 +12,14 @@ distance_matrix = np.load("distance_matrix.npy")
 df = pd.read_csv("austin_nodes.csv")
 num_nodes = len(df)
 
+# --- MOCK TIME WINDOWS & SERVICE TIMES ---
+# tw_start: earliest arrival minute | tw_end: latest arrival minute | service_time: unload mins
+if "tw_start" not in df.columns:
+    # 8-hour delivery day (0 to 480 minutes)
+    df["tw_start"] = [0,  30,  15,  60,  45,  90, 120,   0,  30,  60,  15,  90, 120,   0,  45]
+    df["tw_end"]   = [480, 180, 120, 240, 180, 300, 360, 240, 180, 300, 150, 330, 360, 240, 270]
+    df["service_time"] = [0] + [10] * (num_nodes - 1)  # 10 mins service per stop
+
 # =====================================================================
 # --- INTERACTIVE USER INPUT SECTION (OPTION 1) ---
 # =====================================================================
@@ -38,19 +46,23 @@ total_demand = sum(demands)
 print("\n--- Fleet Configuration ---")
 fleet_type = input("Do all delivery vans have the SAME capacity? (y/n): ").strip().lower()
 
-if fleet_type == 'y':
-    cap = int(input("Enter uniform capacity per van (e.g., 50): "))
+if fleet_type == "y":
+    while True:
+        cap_str = input("Enter uniform capacity per van (e.g., 50): ").strip()
+        if cap_str.isdigit():
+            cap = int(cap_str)
+            break
+        print("    [!] Invalid entry. Enter an integer.")
     num_vehicles = math.ceil(total_demand / cap) + 1
     vehicle_capacities = [cap] * num_vehicles
-else: 
-    cap_inputs = input("Enter capacities for each van separated by spaces (e.g., 60 50 45 40): ")
+else:
+    cap_inputs = input("Enter capacities separated by spaces (e.g., 60 50 45 40): ")
     vehicle_capacities = [int(c) for c in cap_inputs.split()]
     num_vehicles = len(vehicle_capacities)
 
-max_capacity = max(vehicle_capacities)
 total_capacity = sum(vehicle_capacities)
 
-# Feasibility Check
+# Feasibility Safety Check
 if total_demand > total_capacity:
     raise ValueError(f"Infeasible! Total demand ({total_demand}) exceeds total fleet capacity ({total_capacity}).")
 
@@ -63,12 +75,8 @@ for node_idx, location_name in enumerate(df["name"]):
         print(f"Node {node_idx:2d}: {location_name:<30} | {demands[node_idx]} packages")
 print("==================================================\n")
 
-print(f"   Nodes: {num_nodes} (1 Depot + {num_nodes-1} Customers)")
-print(f"   Total Fleet Demand: {total_demand} packages")
-print(f"   Fleet Provisioned: {num_vehicles} vans with capacities {vehicle_capacities}\n")
-
-# --- PuLP Optimization Model ---
-model = pulp.LpProblem("Austin_CVRP_Optimizer", pulp.LpMinimize)
+# --- PuLP VRPTW Optimization Model ---
+model = pulp.LpProblem("Austin_VRPTW_Optimizer", pulp.LpMinimize)
 
 # Decision Variables: x[i, j, k] = 1 if vehicle k travels from node i to node j
 x = pulp.LpVariable.dicts(
@@ -83,14 +91,20 @@ x = pulp.LpVariable.dicts(
     cat=pulp.LpBinary,
 )
 
-# MTZ Auxiliary Variable: u[i, k] for Subtour Elimination (MTZ Formulation)
-u = pulp.LpVariable.dicts(
-    "Load",
+# Decision Variable: Arrival Time t[i, k]
+t = pulp.LpVariable.dicts(
+    "ArrivalTime",
     ((i, k) for i in range(num_nodes) for k in range(num_vehicles)),
     lowBound=0,
-    upBound=max_capacity,
     cat=pulp.LpContinuous,
 )
+
+# Apply Time Window Bounds Directly to Arrival Variables
+for k in range(num_vehicles):
+    for i in range(num_nodes):
+        t[i, k].lowBound = float(df.loc[i, "tw_start"])
+        t[i, k].upBound = float(df.loc[i, "tw_end"])
+
 
 # 1. Objective Function: Minimize Total Distance Traveled
 model += pulp.lpSum(
@@ -131,16 +145,17 @@ for k in range(num_vehicles):
         <= cap_k
     ), f"Capacity_Limit_Vehicle_{k}"
 
-# 5. Constraint: Subtour Elimination (MTZ with Per-Vehicle Capacity)
+# 5. Constraint: Time Propagation & Subtour Elimination (Big-M formulation)
+M = 2000  # Large constant exceeding maximum shift length
 for k in range(num_vehicles):
-    cap_k = vehicle_capacities[k]
-    for i in range(1, num_nodes):
+    for i in range(num_nodes):
         for j in range(1, num_nodes):
             if i != j:
+                travel_t = distance_matrix[i][j]
+                service_t = df.loc[i, "service_time"]
                 model += (
-                    u[i, k] - u[j, k] + cap_k * x[i, j, k]
-                    <= cap_k - demands[j]
-                ), f"Subtour_Elim_Vehicle_{k}_From_{i}_To_{j}"
+                    t[j, k] >= t[i, k] + service_t + travel_t - M * (1 - x[i, j, k])
+                )
 
 print("2. Solving the Integer Programming Model...")
 # timeLimit limits search duration to 10 seconds max
@@ -149,11 +164,11 @@ model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
 print(f"Status: {pulp.LpStatus[model.status]}")
 print(f"Total Optimized Driving Time: {pulp.value(model.objective):.2f} minutes\n")
 
-# --- Print Routes ---
-print("--- OPTIMIZED ROUTES ---")
+# --- Print Scheduled Routes ---
+print("--- OPTIMIZED ROUTES & TIMETABLE ---")
 for k in range(num_vehicles):
     route = []
-    current_node = 0  # Start from depot
+    current_node = 0
     total_load = 0
     visited = set()
 
@@ -170,11 +185,15 @@ for k in range(num_vehicles):
         visited.add(next_node)
         current_node = next_node
         if current_node == 0:
-            break  # Return to depot
+            break
 
     if route:
-        stops = " -> ".join([df.loc[node, "name"] for node in [0] + route])
         cap_k = vehicle_capacities[k]
-        print(f"Vehicle {k+1} (Capacity: {cap_k}): {stops}")
-        print(f"   Demands per stop: {[demands[node] for node in route]}")
-        print(f"   Payload Delivered: {total_load}/{cap_k} units\n")
+        print(f"Vehicle {k+1} (Capacity: {cap_k} pkgs):")
+        for node in route:
+            arr_min = pulp.value(t[node, k])
+            w_start = df.loc[node, "tw_start"]
+            w_end = df.loc[node, "tw_end"]
+            name = df.loc[node, "name"]
+            print(f"   -> {name:<30} | Arrive: Min {arr_min:5.1f} (Window: {w_start:3d}-{w_end:3d} min) | Pkgs: {demands[node]}")
+        print(f"   Total Payload: {total_load}/{cap_k} units\n")
