@@ -10,17 +10,49 @@ import math
 print("1. Loading distance matrix and node locations...")
 distance_matrix = np.load("distance_matrix.npy")
 df = pd.read_csv("austin_nodes.csv")
-
 num_nodes = len(df)
-vehicle_capacity = 50
 
-# Assign sample demands (Node 0 is depot = 0 demand)
-np.random.seed(42)
-demands = [0] + [int(x) for x in np.random.randint(10, 25, size=num_nodes - 1)]
+# =====================================================================
+# --- INTERACTIVE USER INPUT SECTION (OPTION 1) ---
+# =====================================================================
+print("\n================ CUSTOM INPUT CONFIGURATION ================")
+
+# 1. Custom Customer Demands Input
+use_custom_demands = input("Do you want to enter custom package demands for locations? (y/n): ").strip().lower()
+
+demands = [0] # Node 0 (Depot) has 0 demand
+if use_custom_demands == 'y':
+    print(f"\nEnter package demands for each of the {num_nodes-1} customer locations:")
+    for idx in range(1, num_nodes):
+        loc_name = df.loc[idx, "name"]
+        val = int(input(f"  Demand for Node {idx:2d} ({loc_name:<30}): "))
+        demands.append(val)
+else: 
+    print("-> Using default random demands...")
+    np.random.seed(42)
+    demands += [int(x) for x in np.random.randint(10, 25, size=num_nodes - 1)]
+
 total_demand = sum(demands)
 
-# Dynamic minimal fleet size to avoid bloated search space
-num_vehicles = math.ceil(total_demand / vehicle_capacity) + 1
+# 2. Vehicle Capacities & Heterogeneous Fleet Input
+print("\n--- Fleet Configuration ---")
+fleet_type = input("Do all delivery vans have the SAME capacity? (y/n): ").strip().lower()
+
+if fleet_type == 'y':
+    cap = int(input("Enter uniform capacity per van (e.g., 50): "))
+    num_vehicles = math.ceil(total_demand / cap) + 1
+    vehicle_capacities = [cap] * num_vehicles
+else: 
+    cap_inputs = input("Enter capacities for each van separated by spaces (e.g., 60 50 45 40): ")
+    vehicle_capacities = [int(c) for c in cap_inputs.split()]
+    num_vehicles = len(vehicle_capacities)
+
+max_capacity = max(vehicle_capacities)
+total_capacity = sum(vehicle_capacities)
+
+# Feasibility Check
+if total_demand > total_capacity:
+    raise ValueError(f"Infeasible! Total demand ({total_demand}) exceeds total fleet capacity ({total_capacity}).")
 
 # --- PRINT ALL LOCATION DEMANDS AT THE BEGINNING ---
 print("\n================ LOCATION DEMANDS ================")
@@ -33,8 +65,7 @@ print("==================================================\n")
 
 print(f"   Nodes: {num_nodes} (1 Depot + {num_nodes-1} Customers)")
 print(f"   Total Fleet Demand: {total_demand} packages")
-print(f"   Vehicle Capacity: {vehicle_capacity} units per van")
-print(f"   Fleet Provisioned: {num_vehicles} vans\n")
+print(f"   Fleet Provisioned: {num_vehicles} vans with capacities {vehicle_capacities}\n")
 
 # --- PuLP Optimization Model ---
 model = pulp.LpProblem("Austin_CVRP_Optimizer", pulp.LpMinimize)
@@ -57,7 +88,7 @@ u = pulp.LpVariable.dicts(
     "Load",
     ((i, k) for i in range(num_nodes) for k in range(num_vehicles)),
     lowBound=0,
-    upBound=vehicle_capacity,
+    upBound=max_capacity,
     cat=pulp.LpContinuous,
 )
 
@@ -87,8 +118,9 @@ for k in range(num_vehicles):
             == pulp.lpSum(x[j, i, k] for i in range(num_nodes) if i != j)
         ), f"Flow_Balance_Vehicle_{k}_Node_{j}"
 
-# 4. Constraint: Vehicle Capacity Limit
+# 4. Constraint: Per-Vehicle Heterogeneous Capacity Limit
 for k in range(num_vehicles):
+    cap_k = vehicle_capacities[k]
     model += (
         pulp.lpSum(
             demands[j] * x[i, j, k]
@@ -96,17 +128,18 @@ for k in range(num_vehicles):
             for j in range(1, num_nodes)
             if i != j
         )
-        <= vehicle_capacity
+        <= cap_k
     ), f"Capacity_Limit_Vehicle_{k}"
 
-# 5. Constraint: Subtour Elimination (Miller-Tucker-Zemlin formulation)
+# 5. Constraint: Subtour Elimination (MTZ with Per-Vehicle Capacity)
 for k in range(num_vehicles):
+    cap_k = vehicle_capacities[k]
     for i in range(1, num_nodes):
         for j in range(1, num_nodes):
             if i != j:
                 model += (
-                    u[i, k] - u[j, k] + vehicle_capacity * x[i, j, k]
-                    <= vehicle_capacity - demands[j]
+                    u[i, k] - u[j, k] + cap_k * x[i, j, k]
+                    <= cap_k - demands[j]
                 ), f"Subtour_Elim_Vehicle_{k}_From_{i}_To_{j}"
 
 print("2. Solving the Integer Programming Model...")
@@ -141,9 +174,7 @@ for k in range(num_vehicles):
 
     if route:
         stops = " -> ".join([df.loc[node, "name"] for node in [0] + route])
-        print(f"Vehicle {k+1}: {stops}")
-        
-        # --- NEW LINE: Prints each customer's individual demand ---
+        cap_k = vehicle_capacities[k]
+        print(f"Vehicle {k+1} (Capacity: {cap_k}): {stops}")
         print(f"   Demands per stop: {[demands[node] for node in route]}")
-
-        print(f"   Payload Delivered: {total_load}/{vehicle_capacity} units\n")
+        print(f"   Payload Delivered: {total_load}/{cap_k} units\n")
