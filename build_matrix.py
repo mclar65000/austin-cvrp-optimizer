@@ -14,19 +14,29 @@ print("2 Downloading Austin road network from OpenStreetMap...")
 print("   This may take a few minutes...")
 G = ox.graph_from_place('Austin, Texas, USA', network_type='drive')
 
-print("3. Matching")
-nodes = ox.nearest_nodes(G, X = df['longitude'], Y = df['latitude'])
+# --- TRAFFIC & TRAVEL TIME WEIGHTING ---
+print("3. Imputing speed limits and calculating travel times...")
+# Impute missing speed limits based on road types (highway vs. city street)
+G = ox.add_edge_speeds(G)
+# Calculate travel time in seconds for every street segment (distance / speed)
+G = ox.add_edge_travel_times(G)
 
-print("4. Calculating exact driving distances between all locations...")
+print("4. Matching coordinates to nearest road network nodes...")
+nodes = ox.nearest_nodes(G, X=df['longitude'], Y=df['latitude'])
+
+print("5. Calculating travel time matrix (in minutes) between all locations...")
 num_points = len(nodes)
-distance_matrix = np.zeros((num_points, num_points))
+time_matrix = np.zeros((num_points, num_points))
 
 for i in range(num_points):
     for j in range(num_points):
         if i != j:
-            distance_matrix[i][j] = nx.shortest_path_length(G, nodes[i], nodes[j], weight='length')
-            
-print("5. Saving distance matrix...")
-np.save('distance_matrix.npy', distance_matrix)
+            # Weight set to 'travel_time' (returns seconds); divide by 60 for minutes
+            travel_time_seconds = nx.shortest_path_length(G, nodes[i], nodes[j], weight='travel_time')
+            time_matrix[i][j] = travel_time_seconds / 60.0
 
-print("\nSUCCESS! Saved 'distance_matrix.npy' to your project folder.")
+print("6. Saving travel time matrix...")
+# Overwrite or save as time matrix array
+np.save('distance_matrix.npy', time_matrix)
+
+print("\nSUCCESS! Saved travel time matrix (in minutes) to 'distance_matrix.npy'.")

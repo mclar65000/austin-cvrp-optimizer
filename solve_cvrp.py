@@ -147,7 +147,7 @@ print("2. Solving the Integer Programming Model...")
 model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
 
 print(f"Status: {pulp.LpStatus[model.status]}")
-print(f"Total Optimized Distance: {pulp.value(model.objective) / 1000:.2f} km\n")
+print(f"Total Optimized Driving Time: {pulp.value(model.objective):.2f} minutes\n")
 
 # --- Print Routes ---
 print("--- OPTIMIZED ROUTES ---")
