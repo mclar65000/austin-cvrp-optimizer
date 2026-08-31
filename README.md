@@ -24,7 +24,7 @@ Due to the NP-hard nature of VRPTW, exact solvers deal with exponential complexi
 | **20** | 6 Vans | ~2,400 | ~2,310 | Optimal | ~11.3s |
 | **30** | 9 Vans | ~8,100 | ~7,870 | Gap Limit / Timeout | >30.0s |
 
-> **Engineering Finding:** Big-$M$ time propagation constraints weaken continuous LP relaxations, causing trees to expand rapidly around 25+ stops. This drives the transition to metaheuristics (e.g., Google OR-Tools) for large production fleets.
+> **Engineering Finding:** Big-M time propagation constraints weaken continuous LP relaxations, causing trees to expand rapidly around 25+ stops. This drives the transition to metaheuristics (e.g., Google OR-Tools) for large production fleets.
 
 ---
 
