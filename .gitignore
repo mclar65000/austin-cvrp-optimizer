@@ -1,4 +1,14 @@
+# Virtual Environment
 venv/
+.venv/
+
+# Python Bytecode & Cache
 __pycache__/
 *.pyc
+
+# Operating System Files
 .DS_Store
+Thumbs.db
+
+# Generated Map Output 
+austin_cvrp_map.html
