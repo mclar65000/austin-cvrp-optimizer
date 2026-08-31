@@ -29,7 +29,7 @@ $$\min \sum_{k=1}^{K} \sum_{i \in V} \sum_{j \in V, j \neq i} c_{i,j} \cdot x_{i
 where $c_{i,j}$ is the travel time between nodes $i$ and $j$.
 
 
-### 3. Core Constraints
+### 3. Constraints
 * **Customer Coverage:** Every customer node $j \in V \setminus \{0\}$ must be visited exactly once:
   $$\sum_{k=1}^{K} \sum_{i \in V, i \neq j} x_{i,j,k} = 1 \quad \forall j \in V \setminus \{0\}$$
 
@@ -55,7 +55,7 @@ where $c_{i,j}$ is the travel time between nodes $i$ and $j$.
 
 ## Perfomance & Scalability Analysis
 
-Due to the NP-hard nature of VRPTW, exact solvers deal with exponential complexity growth as nodes increase: 
+Because of the NP-hard nature of VRPTW, exact solvers deal with exponential complexity growth as nodes increase: 
 
 | Nodes ($N$) | Fleet Size ($K$) | Decision Variables | LinearConstraints | Solver Status | Execution Time |
 | :--- | :--- | :--- | :--- | :--- | :--- |
