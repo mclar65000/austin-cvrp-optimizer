@@ -42,7 +42,7 @@ where $c_{i,j}$ is the travel time between nodes $i$ and $j$.
 
   where $d_j$ is the package demand at customer node $j$.
 
-* **Time Windows & Subtour Elimination (Big-$M$):** Ensures arrival times propagate chronologically while cutting illegal subtours:
+* **Time Windows & Subtour Elimination (Big-M):** Ensures arrival times propagate chronologically while cutting illegal subtours:
 
   $$t_{j,k} \ge t_{i,k} + s_i + c_{i,j} - M(1 - x_{i,j,k}) \quad \forall i \in V, \forall j \in V \setminus \{0\}, i \neq j, \forall k$$
 
