@@ -6,6 +6,13 @@ import  pandas as pd
 import pulp
 #Math: Math is a Python package for mathematical functions
 import math
+#Sys: Sys is a Python package for system-specific parameters and functions
+import sys
+#time: Time is a Python package for time-related functions
+import time
+
+# Record start time for data loading and model build phase
+start_build_time = time.time()
 
 print("1. Loading distance matrix and node locations...")
 distance_matrix = np.load("distance_matrix.npy")
@@ -33,8 +40,12 @@ if use_custom_demands == 'y':
     print(f"\nEnter package demands for each of the {num_nodes-1} customer locations:")
     for idx in range(1, num_nodes):
         loc_name = df.loc[idx, "name"]
-        val = int(input(f"  Demand for Node {idx:2d} ({loc_name:<30}): "))
-        demands.append(val)
+        while True:
+            val_str = input(f"  Demand for Node {idx:2d} ({loc_name:<30}): ").strip()
+            if val_str.isdigit():
+                demands.append(int(val_str))
+                break
+            print("    [!] Invalid entry. Enter a valid integer.")
 else: 
     print("-> Using default random demands...")
     np.random.seed(42)
@@ -146,7 +157,7 @@ for k in range(num_vehicles):
     ), f"Capacity_Limit_Vehicle_{k}"
 
 # 5. Constraint: Time Propagation & Subtour Elimination (Big-M formulation)
-M = 2000  # Large constant exceeding maximum shift length
+M = 480  # 8-Hour Window in Minutes (Depot to Depot)
 for k in range(num_vehicles):
     for i in range(num_nodes):
         for j in range(1, num_nodes):
@@ -157,12 +168,24 @@ for k in range(num_vehicles):
                     t[j, k] >= t[i, k] + service_t + travel_t - M * (1 - x[i, j, k])
                 )
 
-print("2. Solving the Integer Programming Model...")
-# timeLimit limits search duration to 10 seconds max
-model.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=10))
+build_time = time.time() - start_build_time
+
+# Extracting Model Dimensionality Metrics
+num_vars = model.numVariables()
+num_constraints = model.numConstraints()
+
+# Solve the model and measure time taken
+print("2. Solving the Integer Programming Model (30 seconds max)...")
+start_solve_time = time.time()
+# Stop if it reaches 2% gap or 30 seconds
+model.solve(pulp.PULP_CBC_CMD(msg=0, gapRel=0.02, timelimit=30))
+solve_time = time.time() - start_solve_time
+
+solver_status = pulp.LpStatus[model.status]
+total_cost = pulp.value(model.objective) if solver_status == "Optimal" else "N/A"
 
 print(f"Status: {pulp.LpStatus[model.status]}")
-print(f"Total Optimized Driving Time: {pulp.value(model.objective):.2f} minutes\n")
+print(f"Total Optimized Driving Time: {total_cost:.2f} minutes\n" if solver_status == "Optimal" else "\n")
 
 # --- Print Scheduled Routes ---
 print("--- OPTIMIZED ROUTES & TIMETABLE ---")
@@ -197,3 +220,17 @@ for k in range(num_vehicles):
             name = df.loc[node, "name"]
             print(f"   -> {name:<30} | Arrive: Min {arr_min:5.1f} (Window: {w_start:3d}-{w_end:3d} min) | Pkgs: {demands[node]}")
         print(f"   Total Payload: {total_load}/{cap_k} units\n")
+
+# =====================================================================
+# --- AUTOMATIC PERFORMANCE BENCHMARK METRICS ---
+# =====================================================================
+print("================ RUN PERFORMANCE BENCHMARK ================")
+print(f"  Nodes Configured    : {num_nodes} (1 Depot + {num_nodes - 1} Customers)")
+print(f"  Fleet Provisioned   : {num_vehicles} Vehicles")
+print(f"  Decision Variables  : {num_vars:,}")
+print(f"  Linear Constraints  : {num_constraints:,}")
+print(f"  Model Construction  : {build_time:.3f} seconds")
+print(f"  CBC Solver Time     : {solve_time:.3f} seconds")
+print(f"  Total Run Time      : {(build_time + solve_time):.3f} seconds")
+print(f"  Solver Status       : {solver_status}")
+print("===========================================================")
