@@ -70,12 +70,20 @@ Because of the NP-hard nature of VRPTW, exact solvers deal with exponential comp
 
 ## Installation & Usage
 
-### 1. Clone & Setup Environment
+### 1. Clone the Repository
 ```bash
-git clone https://github.com/mclar65000/austin-cvrp-optimizer
-.git
+git clone https://github.com/mclar65000/austin-cvrp-optimizer.git
 cd austin-cvrp-optimizer
-
-python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+```
+### 2. Set Up Virtual Environment
+```bash
+#On macOS / Linux:
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
+
+#On Windows (PowerShell):
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
